@@ -101,6 +101,7 @@ public class ChooserDetailFragment extends Fragment implements LoaderManager.Loa
     private boolean mLoadInitialCheckboxStates = true;
     private SparseArray<Boolean> mInitialCheckboxStates = new SparseArray<Boolean>();
     private SparseArray<Boolean> mCurrentCheckboxStates = new SparseArray<Boolean>();
+    private SparseArray<Boolean> mSavedCheckboxStates = new SparseArray<Boolean>();
 
     // allows emphasis on a particular aspect of a theme. ex "mods_icons" would
     // uncheck all components but icons and sets the first preview image to be the icon pack
@@ -187,12 +188,26 @@ public class ChooserDetailFragment extends Fragment implements LoaderManager.Loa
             CheckBox componentCheckbox = (CheckBox) v.findViewById(entry.getValue());
             mComponentToCheckbox.put(entry.getKey(), componentCheckbox);
             componentCheckbox.setOnCheckedChangeListener(mComponentCheckChangedListener);
+            if (savedInstanceState != null) {
+                mSavedCheckboxStates.put(entry.getValue(),
+                        savedInstanceState.getBoolean(entry.getKey()));
+            }
         }
 
         getLoaderManager().initLoader(LOADER_ID_THEME_INFO, null, this);
         getLoaderManager().initLoader(LOADER_ID_APPLIED_THEME, null, this);
         mService = (ThemeManager) getActivity().getSystemService(Context.THEME_SERVICE);
         return v;
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        for (Map.Entry<String, CheckBox> entry : mComponentToCheckbox.entrySet()) {
+            String component = entry.getKey();
+            CheckBox checkBox = entry.getValue();
+            outState.putBoolean(component, checkBox.isChecked());
+        }
     }
 
     private List<String> getCheckedComponents() {
@@ -331,16 +346,18 @@ public class ChooserDetailFragment extends Fragment implements LoaderManager.Loa
         int legacyIdx = cursor.getColumnIndex(ThemesColumns.IS_LEGACY_THEME);
         int styleIdx = cursor.getColumnIndex(ThemesColumns.STYLE_URI);
         int lockIdx = cursor.getColumnIndex(ThemesColumns.LOCKSCREEN_URI);
+        int defaultIdx = cursor.getColumnIndex(ThemesColumns.IS_DEFAULT_THEME);
 
         boolean isLegacyTheme = cursor.getInt(legacyIdx) == 1;
+        boolean isDefaultTheme = cursor.getInt(defaultIdx) == 1;
         String title = ChooserBrowseFragment.DEFAULT.equals(mPkgName)
-                ? getActivity().getString(R.string.holo_default) : cursor.getString(titleIdx);
+                ? getActivity().getString(R.string.holo) : cursor.getString(titleIdx);
         String author = cursor.getString(authorIdx);
         String hsImagePath = isLegacyTheme ? mPkgName : cursor.getString(hsIdx);
         String styleImagePath = cursor.getString(styleIdx);
         String lockWallpaperImagePath = cursor.getString(lockIdx);
 
-        mTitle.setText(title);
+        mTitle.setText(title + (isDefaultTheme ? " " + getString(R.string.default_tag) : ""));
         mAuthor.setText(author);
 
         // Configure checkboxes for all the theme components
@@ -419,7 +436,13 @@ public class ChooserDetailFragment extends Fragment implements LoaderManager.Loa
             CheckBox componentCheckbox = entry.getValue();
 
             if (appliedComponents.contains(componentName)) {
-                componentCheckbox.setChecked(true);
+                if (mSavedCheckboxStates.size() > 0 &&
+                        mSavedCheckboxStates.get(componentCheckbox.getId()) != null) {
+                    componentCheckbox.setChecked(mSavedCheckboxStates.get(
+                            componentCheckbox.getId()));
+                } else {
+                    componentCheckbox.setChecked(true);
+                }
             }
             if (mLoadInitialCheckboxStates) {
                 mInitialCheckboxStates.put(componentCheckbox.getId(),

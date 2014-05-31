@@ -15,7 +15,6 @@
      limitations under the License.
 -->
 <resources>
-
     <string name="app_name">主题</string>
 
     <!-- Themable items -->
@@ -47,5 +46,4 @@
 
     <string name="theme_installed_notification_title">%s 已安装</string>
     <string name="theme_installed_notification_text">主题成功安装.</string>
-
 </resources>

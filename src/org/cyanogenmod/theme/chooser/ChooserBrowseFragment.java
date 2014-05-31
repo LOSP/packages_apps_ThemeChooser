@@ -18,6 +18,8 @@ package org.cyanogenmod.theme.chooser;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.content.res.CustomTheme;
+
 import org.cyanogenmod.theme.chooser.WallpaperAndIconPreviewFragment.IconInfo;
 import org.cyanogenmod.theme.util.BootAnimationHelper;
 import org.cyanogenmod.theme.util.IconPreviewHelper;
@@ -44,6 +46,7 @@ import android.support.v4.app.LoaderManager;
 import android.support.v4.content.CursorLoader;
 import android.support.v4.content.Loader;
 import android.support.v4.widget.CursorAdapter;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.LayoutInflater;
@@ -59,8 +62,10 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 
-public class ChooserBrowseFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor> {
-    public static final String DEFAULT = "default";
+public class ChooserBrowseFragment extends Fragment
+        implements LoaderManager.LoaderCallbacks<Cursor> {
+    public static final String TAG = ChooserBrowseFragment.class.getCanonicalName();
+    public static final String DEFAULT = CustomTheme.HOLO_DEFAULT;
 
     public ListView mListView;
     public LocalPagerAdapter mAdapter;
@@ -137,9 +142,12 @@ public class ChooserBrowseFragment extends Fragment implements LoaderManager.Loa
             selection = sb.toString();
         }
 
+        // sort in ascending order but make sure the "default" theme is always first
+        String sortOrder = "(" + ThemesColumns.IS_DEFAULT_THEME + "=1) DESC, "
+                + ThemesColumns.TITLE + " ASC";
+
         return new CursorLoader(getActivity(), ThemesColumns.CONTENT_URI, null, selection,
-                selectionArgs, "(" + ThemesColumns.PKG_NAME + "='default') DESC, "
-                + ThemesColumns.TITLE + " ASC");
+                selectionArgs, sortOrder);
     }
 
     public class LocalPagerAdapter extends CursorAdapter {
@@ -169,18 +177,21 @@ public class ChooserBrowseFragment extends Fragment implements LoaderManager.Loa
             int styleIdx = mCursor.getColumnIndex(ThemesColumns.STYLE_URI);
             int pkgIdx = mCursor.getColumnIndex(ThemesColumns.PKG_NAME);
             int legacyIndex = mCursor.getColumnIndex(ThemesColumns.IS_LEGACY_THEME);
+            int defaultIndex = mCursor.getColumnIndex(ThemesColumns.IS_DEFAULT_THEME);
 
             String pkgName = mCursor.getString(pkgIdx);
-            String title = DEFAULT.equals(pkgName) ? mContext.getString(R.string.holo_default)
+            String title = DEFAULT.equals(pkgName) ? mContext.getString(R.string.holo)
                     : mCursor.getString(titleIdx);
             String author = mCursor.getString(authorIdx);
             String hsImagePath = DEFAULT.equals(pkgName) ? mCursor.getString(hsIdx) :
                     mCursor.getString(wpIdx);
             String styleImagePath = mCursor.getString(styleIdx);
             boolean isLegacyTheme = mCursor.getInt(legacyIndex) == 1;
+            boolean isDefaultTheme = mCursor.getInt(defaultIndex) == 1;
 
             ThemeItemHolder item = (ThemeItemHolder) view.getTag();
-            item.title.setText(title);
+            item.title.setText(title + (isDefaultTheme ? " "
+                    + getString(R.string.default_tag) : ""));
             item.author.setText(author);
             if (mFilters.isEmpty()) {
                 bindDefaultView(item, pkgName, hsImagePath, isLegacyTheme);
@@ -335,9 +346,15 @@ public class ChooserBrowseFragment extends Fragment implements LoaderManager.Loa
         @Override
         protected Bitmap doInBackground(Object... params) {
             Bitmap bitmap = null;
+            Context context = getActivity();
+            if (context == null) {
+                Log.d(TAG, "Activity was detached, skipping loadImage");
+                return null;
+            }
+
             if (!isLegacyTheme) {
                 if (DEFAULT.equals(pkgName)) {
-                    Resources res = getActivity().getResources();
+                    Resources res = context.getResources();
                     AssetManager assets = new AssetManager();
                     assets.addAssetPath(WallpaperAndIconPreviewFragment.FRAMEWORK_RES);
                     Resources frameworkRes = new Resources(assets, res.getDisplayMetrics(),
@@ -347,9 +364,9 @@ public class ChooserBrowseFragment extends Fragment implements LoaderManager.Loa
                             mMaxImageSize.x, mMaxImageSize.y);
                 } else {
                     if (URLUtil.isAssetUrl(path)) {
-                        Context ctx = getActivity();
+                        Context ctx = context;
                         try {
-                            ctx = getActivity().createPackageContext(pkgName, 0);
+                            ctx = context.createPackageContext(pkgName, 0);
                         } catch (PackageManager.NameNotFoundException e) {
 
                         }
@@ -360,9 +377,9 @@ public class ChooserBrowseFragment extends Fragment implements LoaderManager.Loa
                 }
             } else {
                 try {
-                    PackageManager pm = getActivity().getPackageManager();
+                    PackageManager pm = context.getPackageManager();
                     PackageInfo pi = pm.getPackageInfo(path, 0);
-                    final Context themeContext = getActivity().createPackageContext(path,
+                    final Context themeContext = context.createPackageContext(path,
                             Context.CONTEXT_IGNORE_SECURITY);
                     final Resources res = themeContext.getResources();
                     final int resId = showWallpaper ? pi.legacyThemeInfos[0].wallpaperResourceId :
